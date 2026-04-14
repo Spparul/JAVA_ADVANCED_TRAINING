@@ -1,0 +1,222 @@
+import java.util.*;
+import java.io.*;
+
+// Abstract Base Class
+abstract class Fighter {
+    protected String name;
+    protected int health, maxHealth, attack, defense;
+    protected boolean poisoned = false;
+
+    public Fighter(String name, int health, int attack, int defense) {
+        this.name = name;
+        this.health = health;
+        this.maxHealth = health;
+        this.attack = attack;
+        this.defense = defense;
+    }
+
+    public boolean isAlive() { return health > 0; }
+
+    public void takeDamage(int dmg) {
+        health -= dmg;
+        if (health < 0) health = 0;
+    }
+
+    public void applyPoison() { poisoned = true; }
+
+    public void processStatus() {
+        if (poisoned && isAlive()) {
+            health -= 5;
+            System.out.println(name + " takes poison damage (5)");
+        }
+    }
+
+    public String healthBar() {
+        int bars = (health * 10) / maxHealth;
+        return "[" + "#".repeat(bars) + " ".repeat(10 - bars) + "] " + health + "/" + maxHealth;
+    }
+
+    public abstract void attack(Fighter opponent, Scanner sc);
+}
+
+// Player Class
+class Player extends Fighter {
+    private Map<String, Integer> skills = new HashMap<>();
+    private Random rand = new Random();
+
+    public Player(String name, int health, int attack, int defense) {
+        super(name, health, attack, defense);
+        skills.put("Power Strike", 10);
+        skills.put("Poison Blade", 5);
+    }
+
+    @Override
+    public void attack(Fighter opponent, Scanner sc) {
+        System.out.println("\n" + name + "'s Turn:");
+        System.out.println("1. Normal Attack");
+        System.out.println("2. Use Skill");
+
+        int choice = sc.nextInt();
+
+        if (choice == 1) {
+            int dmg = Math.max(0, attack - opponent.defense);
+            opponent.takeDamage(dmg);
+            System.out.println(name + " attacks → " + dmg);
+        } else {
+            List<String> skillList = new ArrayList<>(skills.keySet());
+            String skill = skillList.get(rand.nextInt(skillList.size()));
+            int dmg = Math.max(0, (attack + skills.get(skill)) - opponent.defense);
+            opponent.takeDamage(dmg);
+
+            System.out.println(name + " uses " + skill + " → " + dmg);
+
+            if (skill.equals("Poison Blade")) {
+                opponent.applyPoison();
+                System.out.println(opponent.name + " is poisoned!");
+            }
+        }
+    }
+}
+
+// Enemy Class
+class Enemy extends Fighter {
+    private Random rand = new Random();
+
+    public Enemy(String name, int health, int attack, int defense) {
+        super(name, health, attack, defense);
+    }
+
+    @Override
+    public void attack(Fighter opponent, Scanner sc) {
+        int dmg = Math.max(0, (attack + rand.nextInt(5)) - opponent.defense);
+        opponent.takeDamage(dmg);
+        System.out.println(name + " attacks → " + dmg);
+    }
+}
+
+// Arena Class
+class Arena {
+    private List<Fighter> fighters = new ArrayList<>();
+
+    public void addFighter(Fighter f) { fighters.add(f); }
+
+    public List<Fighter> getAlive() {
+        List<Fighter> alive = new ArrayList<>();
+        for (Fighter f : fighters) if (f.isAlive()) alive.add(f);
+        return alive;
+    }
+}
+
+// Battle Engine
+class BattleEngine {
+    private Queue<Fighter> queue = new LinkedList<>();
+    private Map<String, Integer> leaderboard = new HashMap<>();
+
+    public void startBattle(Arena arena, Scanner sc) {
+        queue.addAll(arena.getAlive());
+        int round = 1;
+
+        System.out.println("\n=== BATTLE START ===");
+
+        while (true) {
+            List<Fighter> alive = arena.getAlive();
+            if (alive.size() <= 1) break;
+
+            System.out.println("\n--- Round " + round + " ---");
+
+            Fighter current = queue.poll();
+            if (current == null || !current.isAlive()) continue;
+
+            current.processStatus();
+
+            List<Fighter> targets = new ArrayList<>(alive);
+            targets.remove(current);
+            Fighter opponent = targets.get(new Random().nextInt(targets.size()));
+
+            current.attack(opponent, sc);
+
+            System.out.println(current.name + " " + current.healthBar());
+            System.out.println(opponent.name + " " + opponent.healthBar());
+
+            if (current.isAlive()) queue.offer(current);
+            round++;
+        }
+
+        System.out.println("\n=== BATTLE OVER ===");
+
+        List<Fighter> winners = arena.getAlive();
+        if (!winners.isEmpty()) {
+            Fighter w = winners.get(0);
+            System.out.println("🏆 Winner: " + w.name);
+            leaderboard.put(w.name, w.health);
+        }
+
+        showLeaderboard();
+        saveFile();
+    }
+
+    private void showLeaderboard() {
+        System.out.println("\n=== LEADERBOARD ===");
+        TreeMap<Integer, String> sorted = new TreeMap<>(Collections.reverseOrder());
+
+        for (Map.Entry<String, Integer> e : leaderboard.entrySet())
+            sorted.put(e.getValue(), e.getKey());
+
+        for (Map.Entry<Integer, String> e : sorted.entrySet())
+            System.out.println(e.getValue() + " → HP: " + e.getKey());
+    }
+
+    private void saveFile() {
+        try {
+            FileWriter fw = new FileWriter("battle_results.txt");
+            for (Map.Entry<String, Integer> e : leaderboard.entrySet())
+                fw.write(e.getKey() + " HP: " + e.getValue() + "\n");
+
+            fw.close();
+            System.out.println("Saved to file!");
+        } catch (Exception e) {
+            System.out.println("File error");
+        }
+    }
+}
+
+// Main Class
+public class BattleArenaSystem {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        while (true) {
+            System.out.println("\n=== MENU ===");
+            System.out.println("1. Start Battle");
+            System.out.println("2. Exit");
+
+            int choice = sc.nextInt();
+
+            if (choice == 2) {
+                System.out.println("Exiting...");
+                break;
+            }
+
+            Arena arena = new Arena();
+
+            System.out.print("Enter number of players: ");
+            int n = sc.nextInt();
+
+            for (int i = 0; i < n; i++) {
+                System.out.print("Enter Player Name: ");
+                String name = sc.next();
+                arena.addFighter(new Player(name, 100, 20, 5));
+            }
+
+            // Enemies
+            arena.addFighter(new Enemy("Goblin", 80, 15, 3));
+            arena.addFighter(new Enemy("Orc", 120, 25, 8));
+            arena.addFighter(new Enemy("Dragon", 150, 30, 10));
+
+            BattleEngine engine = new BattleEngine();
+            engine.startBattle(arena, sc);
+        }
+
+        sc.close();
+    }
+}
